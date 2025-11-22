@@ -57,24 +57,17 @@ You will lose 10% if you don't detail your part 1 and part 2 code below
 
 Describe what strategy you implemented to speed up part 1
 
-The biggest thing that allowed for speed up here was in the threads. With recursion, it ran decently quick, but the threads made it so
-several API calls could happen almost simultaneously. Since the API calls were the slowest part of the function, making each thread take
-a few API calls drastically improved the run time of the whole function, as the work was divided between concurrent threads
+<Add your comments here>
 
 
 Describe what strategy you implemented to speed up part 2
 
-The speed up here came from the quantity of threads as well. I started with only 10 threads and made each one a worker thread, so each
-just gets the next id from the queue to process and does the work needed on it. The add_to_tree lock ensures data still gets added
-correctly and doesn't slow down the program. Only when the queue was empty would the worker threads stop, not before. Once I got all of
-that working, I just increased the number of threads until I got a runtime under ten seconds
+<Add your comments here>
 
 
 Extra (Optional) 10% Bonus to speed up part 3 (WON'T run in under ten seconds)
 
-I'm not sure if this is really the correct implementation, but since I already had a max number of threads for my implementation of part
-2, I just used that same code and changed the number to 5, so no more threads were created than that. It runs in about 30 seconds as it
-is, which I feel is still pretty good.
+<Add your comments here>
 
 """
 from common import *
@@ -90,11 +83,51 @@ THREADS = 50
 # check for child I came from to make sure I don't add them again
 
 # -----------------------------------------------------------------------------
-def depth_fs_pedigree(family_id, tree:Tree, add_to_tree = None):
-    # in the first iteration, make an add_to_tree lock
-    if add_to_tree is None:
-        add_to_tree = threading.Lock()
+def depth_fs_pedigree(family_id, tree:Tree):
+    # since this is main thread, make an add_to_tree lock
+    add_to_tree = threading.Lock()
+    
+    data = get_data_from_server(f'{TOP_API_URL}/family/{family_id}')
+    #print(f"Here is the data: {data}")
+    family = Family(data)
+    #print(family)
+    with add_to_tree:
+        tree.add_family(family)
 
+    # use ids to get husband and wife, then get their data from API
+    husband_id = family.get_husband()
+    wife_id = family.get_wife()
+
+    husband_data = get_data_from_server(f'{TOP_API_URL}/person/{husband_id}')
+    wife_data = get_data_from_server(f'{TOP_API_URL}/person/{wife_id}')
+
+    # make them both people and add them to the tree
+    husband = Person(husband_data)
+    wife = Person(wife_data)
+    with add_to_tree:
+        tree.add_person(husband)
+        tree.add_person(wife)
+
+    # recursively look at each person's original family via their parent_id
+    # will also eventually need threads to handle this as well
+    t = threading.Thread(target=recursive_people, args=(husband.get_parentid(), tree, add_to_tree))
+    wt = threading.Thread(target=recursive_people, args=(wife.get_parentid(), tree, add_to_tree))
+
+    t.start()
+    wt.start()
+
+    # then, make all the children and add them to the tree as well
+    for i in family.get_children():
+        if not tree.does_person_exist(i):
+            child = Person(get_data_from_server(f'{TOP_API_URL}/person/{i}'))
+            with add_to_tree:
+                tree.add_person(child)
+
+    t.join()
+    wt.join()
+
+def recursive_people(family_id, tree: Tree, add_to_tree: threading.Lock):
+    #make API call, then see if both parents are None, meaning that there are no more generations
     data = get_data_from_server(f'{TOP_API_URL}/family/{family_id}')
     #print(f"Here is the data: {data}")
     if (data is None):
@@ -121,8 +154,8 @@ def depth_fs_pedigree(family_id, tree:Tree, add_to_tree = None):
         tree.add_person(wife)
 
     # use threads to recursively look at each person's original family via their parent_id
-    t = threading.Thread(target=depth_fs_pedigree, args=(husband.get_parentid(), tree, add_to_tree))
-    wt = threading.Thread(target=depth_fs_pedigree, args=(wife.get_parentid(), tree, add_to_tree))
+    t = threading.Thread(target=recursive_people, args=(husband.get_parentid(), tree, add_to_tree))
+    wt = threading.Thread(target=recursive_people, args=(wife.get_parentid(), tree, add_to_tree))
 
     t.start()
     wt.start()
@@ -138,12 +171,43 @@ def depth_fs_pedigree(family_id, tree:Tree, add_to_tree = None):
 
 # -----------------------------------------------------------------------------
 def breadth_fs_pedigree(family_id, tree:Tree):
-    # uses start id and like starts with the family, puts it in the queue, then gets individuals and puts them in the queue too
-    
-    #initialize queue and lock, and add first family id
+    # this one doesn't use recursion so it might be a bit simpler - OR MAYBE NOT
+
+    #initialize queue and lock
     processing_queue = queue.Queue()
     add_to_tree = threading.Lock()
+
     processing_queue.put(family_id)
+
+    data = get_data_from_server(f'{TOP_API_URL}/family/{processing_queue.get()}')
+    # print(f"Here is the data: {data}")
+    family = Family(data)
+    # print(family)
+    with add_to_tree:
+        tree.add_family(family)
+
+    # use ids to get husband and wife, then get their data from API
+    husband_id = family.get_husband()
+    wife_id = family.get_wife()
+
+    husband_data = get_data_from_server(f'{TOP_API_URL}/person/{husband_id}')
+    wife_data = get_data_from_server(f'{TOP_API_URL}/person/{wife_id}')
+
+    # make them both people and add them to the tree
+    husband = Person(husband_data)
+    wife = Person(wife_data)
+    with add_to_tree:
+        tree.add_person(husband)
+        tree.add_person(wife)
+
+    processing_queue.put(husband.get_parentid())
+    processing_queue.put(wife.get_parentid())
+
+    for i in family.get_children():
+        if not tree.does_person_exist(i):
+            child = Person(get_data_from_server(f'{TOP_API_URL}/person/{i}'))
+            with add_to_tree:
+                tree.add_person(child)
 
     threads = []
     for _ in range(THREADS):
@@ -151,7 +215,6 @@ def breadth_fs_pedigree(family_id, tree:Tree):
         t.start()
         threads.append(t)
 
-    # Chat tried to tell me this was the way to do it and I said no, this is wrong, cuz we're continuously adding to the queue
     # for _ in range(THREADS):
     #     processing_queue.put(None)
 
@@ -159,8 +222,11 @@ def breadth_fs_pedigree(family_id, tree:Tree):
         t.join()
 
 
-# this function gets a family, gets the husband and wife and puts their parent ids in the queue, then processes and add children
-# each thread takes care of the next API call, like worker threads
+    # uses start id and like starts with the family, puts it in the queue, then gets individuals and puts them in the queue too
+    # it looks like putting a family in, then getting husband and wife and putting them in the queue, then getting their parents
+    # things get pulled from queue and processed in a specific order
+    # each thread would take care of the next API call, like worker threads
+
 def call_API_worker(tree:Tree, add_to_tree: threading.Lock, process_queue : queue.Queue):
     while True:
         next_id = process_queue.get()
@@ -192,7 +258,6 @@ def call_API_worker(tree:Tree, add_to_tree: threading.Lock, process_queue : queu
             tree.add_person(husband)
             tree.add_person(wife)
 
-        #Add the next families to be processed into the tree
         process_queue.put(husband.get_parentid())
         process_queue.put(wife.get_parentid())
 
@@ -202,74 +267,15 @@ def call_API_worker(tree:Tree, add_to_tree: threading.Lock, process_queue : queu
                 with add_to_tree:
                     tree.add_person(child)
 
-    # if the loop breaks, that means we can put a None back in the queue and be done with this thread
     process_queue.put(None)
 
 # -----------------------------------------------------------------------------
 def breadth_fs_pedigree_limit5(family_id, tree):
-    # Limit number of concurrent connections to the FS server to 5
+    # KEEP this function even if you don't implement it
+    # TODO - implement breadth first retrieval
+    #      - Limit number of concurrent connections to the FS server to 5
     # this means that it's like a limited number of consumer threads
-    # this might not be completely right, but since the above version had a set number of threads,
-    # I just changed this one to only work with 5 threads
+    print("the other breadth I like to eat")
+    # TODO - Printing out people and families that are retrieved from the server will help debugging
 
-
-    #initialize queue and lock, and add first family id
-    processing_queue = queue.Queue()
-    add_to_tree = threading.Lock()
-    processing_queue.put(family_id)
-
-    threads = []
-    for _ in range(5):
-        t = threading.Thread(target=call_API_worker_5, args=(tree, add_to_tree, processing_queue))
-        t.start()
-        threads.append(t)
-
-    for t in threads:
-        t.join()
-
-
-# this function gets a family, gets the husband and wife and puts their parent ids in the queue, then processes and add children
-# each thread takes care of the next API call, like worker threads
-def call_API_worker_5(tree:Tree, add_to_tree: threading.Lock, process_queue : queue.Queue):
-    while True:
-        next_id = process_queue.get()
-        if next_id is None:
-            break
-        
-        #get data from API to process
-        data = get_data_from_server(f'{TOP_API_URL}/family/{next_id}')
-        # print(f"Here is the data: {data}")
-        if (data is None):
-            continue
-        
-        family = Family(data)
-        #print(family)
-        with add_to_tree:
-            tree.add_family(family)
-
-        # use ids to get husband and wife, then get their data from API
-        husband_id = family.get_husband()
-        wife_id = family.get_wife()
-
-        husband_data = get_data_from_server(f'{TOP_API_URL}/person/{husband_id}')
-        wife_data = get_data_from_server(f'{TOP_API_URL}/person/{wife_id}')
-
-        # make them both people and add them to the tree
-        husband = Person(husband_data)
-        wife = Person(wife_data)
-        with add_to_tree:
-            tree.add_person(husband)
-            tree.add_person(wife)
-
-        #Add the next families to be processed into the tree
-        process_queue.put(husband.get_parentid())
-        process_queue.put(wife.get_parentid())
-
-        for i in family.get_children():
-            if not tree.does_person_exist(i):
-                child = Person(get_data_from_server(f'{TOP_API_URL}/person/{i}'))
-                with add_to_tree:
-                    tree.add_person(child)
-
-    # if the loop breaks, that means we can put a None back in the queue and be done with this thread
-    process_queue.put(None)
+    pass

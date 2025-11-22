@@ -87,8 +87,53 @@ def merge_normal(arr):
 
 def merge_sort_thread(arr):
     # TODO - Add your code here to use threads.
-    #        call, you need to create a thread to handle that call
-    pass
+    # don't think this will actually work but I'll try
+    threads = []
+    if len(arr) > 1:
+ 
+        # Finding the mid of the array
+        mid = len(arr) // 2
+ 
+        # Dividing the array elements
+        L = arr[:mid]
+ 
+        # into 2 halves
+        R = arr[mid:]
+        # divide in half and make thread for each side?
+        #        call, you need to create a thread to handle that call
+        t = threading.Thread(target=merge_sort_thread, args=(L,))
+        t.start()
+        threads.append(t)
+        rt = threading.Thread(target=merge_sort_thread, args=(R,))
+        rt.start()
+        threads.append(rt)
+
+        for t in threads:
+            t.join()
+
+        i = j = k = 0
+ 
+        # Copy data to temporary arrays L[] and R[]
+        while i < len(L) and j < len(R):
+            if L[i] < R[j]:
+                arr[k] = L[i]
+                i += 1
+            else:
+                arr[k] = R[j]
+                j += 1
+            k += 1
+ 
+        # Checking if any element was left
+        while i < len(L):
+            arr[k] = L[i]
+            i += 1
+            k += 1
+ 
+        while j < len(R):
+            arr[k] = R[j]
+            j += 1
+            k += 1
+    #join threads?
 
 
 def merge_sort_process(arr):
@@ -102,7 +147,7 @@ def merge_sort_process(arr):
 
 def main():
     merges = [
-        (merge_sort, ' Normal Merge Sort '), 
+        (merge_normal, ' Normal Merge Sort '), 
         (merge_sort_thread, ' Threaded Merge Sort '), 
         (merge_sort_process, ' Processes Merge Sort ')
     ]
