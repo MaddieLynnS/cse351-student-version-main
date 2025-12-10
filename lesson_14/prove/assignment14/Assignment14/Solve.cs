@@ -46,7 +46,17 @@ public static class Solve
     public static async Task<bool> DepthFS(long familyId, Tree tree)
     {
         // Note: invalid IDs are zero not null
-
+        var familyFetch = FetchFamilyAsync((familyId));
+        Family? family = await familyFetch;
+        if (family == null)
+            Console.WriteLine("No family found");
+        else
+        {
+            Console.WriteLine("Found family");
+            await DepthFS(2, tree);
+            // await might not be needed
+        }
+        Console.WriteLine("All done!");
         // TODO - add you solution here
         return true;
     }
@@ -56,6 +66,7 @@ public static class Solve
     {
         // Note: invalid IDs are zero not null
         // TODO - add you solution here
+        Thread.Sleep(3000);
         return true;
     }
 }
