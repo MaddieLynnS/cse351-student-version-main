@@ -29,7 +29,7 @@ class Program
         var serverData = await Solve.GetDataFromServerAsync($"{Solve.TopApiUrl}/end");
         Console.WriteLine(serverData);
 
-        // tree.Display(log);
+        tree.Display();
         Logger.Write("");
         Logger.Write($"total_time                  : {totalTime:F5}");
         Logger.Write($"Generations                 : {generations}");
@@ -71,7 +71,7 @@ class Program
                             await run_part(start_id, generations, "Depth First Search", Solve.DepthFS);
                             break;
                         case 2:
-                            await run_part(start_id, generations, "Breath First Search", Solve.BreathFS);
+                            await run_part(start_id, generations, "Breath First Search", Solve.BreadthFS);
                             break;
                     }
                 }
